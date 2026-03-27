@@ -1100,6 +1100,7 @@ public:
         // Starting a non-catchup (live) stream - clear any active catchup state
         m_activeCatchup = PendingCatchup{};
         m_activeCatchupChannelUid = 0;
+        kodi::Log(ADDON_LOG_DEBUG, "GetChannelStreamProperties: no pending catchup, cleared active catchup state for live stream on channel %u", channel.GetUniqueId());
       }
     }
     if (!uidToStream)
@@ -1124,8 +1125,19 @@ public:
         properties.emplace_back("inputstream.ffmpegdirect.catchup_url_format_string", pendingCatchup.templateUrl);
         properties.emplace_back("inputstream.ffmpegdirect.catchup_buffer_start_time", std::to_string(pendingCatchup.adjustedStart));
         properties.emplace_back("inputstream.ffmpegdirect.catchup_buffer_end_time", std::to_string(pendingCatchup.programEnd));
-        properties.emplace_back("inputstream.ffmpegdirect.catchup_terminates", "true");
-        properties.emplace_back("inputstream.ffmpegdirect.is_realtime_stream", "false");
+        // Determine if the program is still ongoing at this moment
+        const time_t nowTs = std::time(nullptr);
+        const bool isOngoing = (pendingCatchup.programEnd > nowTs);
+        if (isOngoing)
+        {
+          properties.emplace_back("inputstream.ffmpegdirect.catchup_terminates", "false");
+          properties.emplace_back("inputstream.ffmpegdirect.is_realtime_stream", "false");
+        }
+        else
+        {
+          properties.emplace_back("inputstream.ffmpegdirect.catchup_terminates", "true");
+          properties.emplace_back("inputstream.ffmpegdirect.is_realtime_stream", "false");
+        }
         properties.emplace_back("inputstream.ffmpegdirect.timezone_shift", "0");
         kodi::Log(ADDON_LOG_INFO, "GetChannelStreamProperties: using inputstream.ffmpegdirect catchup mode");
       }
@@ -1351,6 +1363,7 @@ public:
     // Clear all active stream state that may differ between channels
     m_activeCatchup = PendingCatchup{};
     m_activeCatchupChannelUid = 0;
+    m_pendingCatchupByChannel.clear();
     kodi::Log(ADDON_LOG_DEBUG, "CloseLiveStream: cleared active stream state");
   }
 
