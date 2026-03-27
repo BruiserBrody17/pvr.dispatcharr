@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon id="@ADDON_ID@" version="@ADDON_VERSION@" name="@ADDON_NAME@" provider-name="northernpowerhouse">
-  <requires>@ADDON_DEPENDS@</requires>
+  <requires>
+    <import addon="kodi.binary.instance.pvr" version="9.2.0" minversion="9.2.0"/>
+  </requires>
   <extension
     point="kodi.pvrclient"
     library_windows="pvr.dispatcharr.dll"
