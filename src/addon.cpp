@@ -1061,9 +1061,14 @@ public:
   }
 
   PVR_ERROR GetChannelStreamProperties(const kodi::addon::PVRChannel& channel,
+                                      PVR_SOURCE source,
                                       std::vector<kodi::addon::PVRStreamProperty>& properties) override
   {
     EnsureLoaded();
+    // 'source' distinguishes PVR_SOURCE_DEFAULT (live) from PVR_SOURCE_EPG_AS_LIVE;
+    // the pending-catchup map already captures this intent, so the parameter is not
+    // used further.
+    (void)source;
 
     std::shared_ptr<const UidToStreamMap> uidToStream;
     std::shared_ptr<const std::vector<xtream::LiveStream>> streams;
