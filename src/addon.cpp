@@ -122,7 +122,7 @@ std::string TranslateSpecial(const std::string& url)
   }
 }
 
-constexpr uint32_t kCacheMagic = 0x31435458; // 'XTC1' little-endian
+constexpr uint32_t kCacheMagic = 0x32435458; // 'XTC2' little-endian — bumped when icon field added to cache
 
 void AppendU32(std::string& out, uint32_t v)
 {
@@ -1564,6 +1564,7 @@ private:
     int categoryId = 0;
     unsigned int channelNumber = 0;
     std::string name;
+    std::string icon;
   };
 
   std::string CachePath() const
@@ -1638,6 +1639,11 @@ private:
         return false;
       std::string name = blob.substr(off, nameLen);
       off += nameLen;
+      uint32_t iconLen = 0;
+      if (!ReadU32(blob, off, iconLen) || iconLen > 8192 || off + iconLen > blob.size())
+        return false;
+      std::string icon = blob.substr(off, iconLen);
+      off += iconLen;
       if (uid == 0 || name.empty())
         continue;
 
@@ -1646,6 +1652,8 @@ private:
       ch.SetIsRadio(false);
       ch.SetChannelName(name);
       ch.SetChannelNumber(static_cast<int>(chNum));
+      if (!icon.empty())
+        ch.SetIconPath(icon);
       channels.push_back(std::move(ch));
       uidToStreamId.emplace(uid, static_cast<int>(uid));
       channelCategoryIds.push_back(static_cast<int>(catId));
@@ -1741,6 +1749,8 @@ private:
       AppendU32(blob, static_cast<uint32_t>(c.channelNumber));
       AppendU32(blob, static_cast<uint32_t>(c.name.size()));
       blob.append(c.name);
+      AppendU32(blob, static_cast<uint32_t>(c.icon.size()));
+      blob.append(c.icon);
     }
 
     (void)WriteStringToFileAtomic(path, blob);
@@ -2033,9 +2043,6 @@ private:
         std::vector<CacheChannel> cacheChannels;
         cacheChannels.reserve(streams.size());
 
-        constexpr size_t kIconEnableThreshold = 800; // keep Kodi responsive on very large lists
-        const bool allowIcons = streams.size() <= kIconEnableThreshold;
-
         int sequentialChannelNumber = 1;
         const std::string channelNumberingLower = ToLower(channelNumbering);
 
@@ -2083,7 +2090,7 @@ private:
             channelNumber = s.number;
           ch.SetChannelNumber(channelNumber);
 
-          if (allowIcons && !s.icon.empty())
+          if (!s.icon.empty())
             ch.SetIconPath(s.icon);
 
           channels.push_back(std::move(ch));
@@ -2094,6 +2101,7 @@ private:
           cc.categoryId = s.categoryId;
           cc.channelNumber = static_cast<unsigned int>(channelNumber);
           cc.name = chName;
+          cc.icon = s.icon;
           cacheChannels.push_back(std::move(cc));
 
           auto catIt = categoryIdToName.find(s.categoryId);
