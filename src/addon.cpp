@@ -1063,7 +1063,8 @@ public:
   PVR_ERROR GetChannelStreamProperties(const kodi::addon::PVRChannel& channel,
                                       std::vector<kodi::addon::PVRStreamProperty>& properties) override
   {
-    EnsureLoaded();
+    if (!IsDataReady())
+      EnsureLoaded();
 
     std::shared_ptr<const UidToStreamMap> uidToStream;
     std::shared_ptr<const std::vector<xtream::LiveStream>> streams;
@@ -1104,7 +1105,10 @@ public:
       }
     }
     if (!uidToStream)
-      return PVR_ERROR_UNKNOWN;
+    {
+      kodi::Log(ADDON_LOG_WARNING, "GetChannelStreamProperties: channel data not yet loaded");
+      return PVR_ERROR_SERVER_ERROR;
+    }
 
     const std::string streamMimeType = (ToLower(streamFormat) == "hls")
                                         ? "application/vnd.apple.mpegurl"
@@ -1150,15 +1154,29 @@ public:
     }
     kodi::Log(ADDON_LOG_INFO, "GetChannelStreamProperties: no pending catchup URL for channel %u, using LIVE", channel.GetUniqueId());
 
-    const unsigned int uid = channel.GetUniqueId();
-    auto it = uidToStream->find(uid);
-    if (it == uidToStream->end())
-      return PVR_ERROR_UNKNOWN;
+    std::shared_ptr<const StreamUrlMap> uidToUrl;
+    {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      uidToUrl = m_uidToStreamUrl;
+    }
 
-    const int streamId = it->second;
-    const std::string url = xtream::BuildLiveStreamUrl(settings, streamId, streamFormat);
-    if (url.empty())
-      return PVR_ERROR_UNKNOWN;
+    const unsigned int uid = channel.GetUniqueId();
+
+    if (!uidToUrl)
+    {
+      kodi::Log(ADDON_LOG_WARNING, "GetChannelStreamProperties: URL map not yet built for uid=%u", uid);
+      return PVR_ERROR_SERVER_ERROR;
+    }
+
+    auto urlIt = uidToUrl->find(uid);
+    if (urlIt == uidToUrl->end())
+    {
+      kodi::Log(ADDON_LOG_ERROR,
+                "GetChannelStreamProperties: no URL for uid=%u (map has %zu entries)",
+                uid, uidToUrl->size());
+      return PVR_ERROR_SERVER_ERROR;
+    }
+    const std::string url = urlIt->second;
 
     kodi::Log(ADDON_LOG_DEBUG, "GetChannelStreamProperties: using LIVE URL = %s", url.c_str());
     
@@ -1258,7 +1276,8 @@ public:
   PVR_ERROR IsEPGTagPlayable(const kodi::addon::PVREPGTag& tag, bool& isPlayable) override
   {
     isPlayable = false;
-    EnsureLoaded();
+    if (!IsDataReady())
+      EnsureLoaded();
     
     kodi::Log(ADDON_LOG_DEBUG, "IsEPGTagPlayable: channel=%u, start=%ld, end=%ld", 
               tag.GetUniqueChannelId(), tag.GetStartTime(), tag.GetEndTime());
@@ -1370,7 +1389,8 @@ public:
   PVR_ERROR GetEPGTagStreamProperties(const kodi::addon::PVREPGTag& tag,
                                      std::vector<kodi::addon::PVRStreamProperty>& properties) override
   {
-    EnsureLoaded();
+    if (!IsDataReady())
+      EnsureLoaded();
     
     kodi::Log(ADDON_LOG_INFO, "GetEPGTagStreamProperties CALLED: channel=%u, start=%ld, end=%ld",
               tag.GetUniqueChannelId(), tag.GetStartTime(), tag.GetEndTime());
@@ -2132,6 +2152,17 @@ private:
         const auto t1 = std::chrono::steady_clock::now();
         const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
+        // Pre-build URL map so GetChannelStreamProperties is a single lookup
+        auto newUidToStreamUrl = std::make_shared<StreamUrlMap>();
+        newUidToStreamUrl->reserve(streams.size());
+        for (const auto& s : streams)
+        {
+          if (s.id <= 0) continue;
+          const std::string u = xtream::BuildLiveStreamUrl(settings, s.id, streamFormat);
+          if (!u.empty())
+            newUidToStreamUrl->emplace(static_cast<unsigned int>(s.id), u);
+        }
+
         {
           std::lock_guard<std::mutex> lock(m_mutex);
           if (m_stopRequested || gen != m_generation.load())
@@ -2139,6 +2170,7 @@ private:
 
           m_channels = std::make_shared<ChannelList>(std::move(channels));
           m_uidToStreamId = std::make_shared<UidToStreamMap>(std::move(uidToStreamId));
+          m_uidToStreamUrl = std::move(newUidToStreamUrl);
           m_groupMembers = std::make_shared<GroupMembersMap>(std::move(groupMembers));
           m_groupNamesOrdered = std::make_shared<std::vector<std::string>>(std::move(groupNamesOrdered));
           m_streams = std::make_shared<std::vector<xtream::LiveStream>>(streams);
@@ -2219,6 +2251,12 @@ private:
         std::this_thread::sleep_for(std::chrono::milliseconds(750));
       }
     });
+  }
+
+  bool IsDataReady()
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_dataLoaded && m_uidToStreamId != nullptr && m_uidToStreamUrl != nullptr;
   }
 
   void EnsureLoaded()
@@ -2341,6 +2379,7 @@ private:
       m_loading = true;
       m_dataLoaded = false;
       m_groupsReady = false;
+      m_uidToStreamUrl.reset();
 
       m_xtreamSettings = std::move(xt);
 
@@ -2401,10 +2440,12 @@ private:
   bool m_warnedMissingCreds = false;
   using ChannelList = std::vector<kodi::addon::PVRChannel>;
   using UidToStreamMap = std::unordered_map<unsigned int, int>;
+  using StreamUrlMap = std::unordered_map<unsigned int, std::string>;
   using GroupMembersMap = std::unordered_map<std::string, std::vector<GroupMember>>;
 
   std::shared_ptr<const ChannelList> m_channels;
   std::shared_ptr<const UidToStreamMap> m_uidToStreamId;
+  std::shared_ptr<const StreamUrlMap> m_uidToStreamUrl;
   std::shared_ptr<const std::vector<std::string>> m_groupNamesOrdered;
   std::shared_ptr<const GroupMembersMap> m_groupMembers;
   std::shared_ptr<const std::vector<xtream::ChannelEpg>> m_epgData;
