@@ -1379,10 +1379,12 @@ public:
   void CloseLiveStream() override
   {
     std::lock_guard<std::mutex> lock(m_mutex);
-    // Clear all active stream state that may differ between channels
+    // Clear the active catchup state for the stream being closed.
+    // Do NOT clear m_pendingCatchupByChannel - that may contain a pending
+    // catchup URL set by GetEPGTagStreamProperties for the *next* channel
+    // that hasn't been consumed yet by GetChannelStreamProperties.
     m_activeCatchup = PendingCatchup{};
     m_activeCatchupChannelUid = 0;
-    m_pendingCatchupByChannel.clear();
     kodi::Log(ADDON_LOG_DEBUG, "CloseLiveStream: cleared active stream state");
   }
 
