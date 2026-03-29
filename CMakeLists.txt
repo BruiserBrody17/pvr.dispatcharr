@@ -166,7 +166,6 @@ else()
       _CRT_SECURE_NO_WARNINGS
       WIN32_LEAN_AND_MEAN
       NOMINMAX
-      _DLL
     )
     if(MSVC)
       target_link_options(${ADDON_ID} PRIVATE
