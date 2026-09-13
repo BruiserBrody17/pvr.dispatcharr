@@ -3,6 +3,7 @@
 #include "EpgTagUtil.h"
 #include "RealtimeUpdateParser.h"
 #include "RecurringRuleUtil.h"
+#include "TimerIdentity.h"
 #include "WebSocketClient.h"
 
 #include <kodi/AddonBase.h>
