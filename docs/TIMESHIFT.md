@@ -283,6 +283,27 @@ live channel open, and that both plain playback and a relative backward
 `Player.Seek` succeeded cleanly with playback continuing afterward --
 no regressions found in this mode.
 
+Re-verified again (2026-09-15, native Windows Kodi, same
+`tools/kodi_smoke_test.py`-driven approach) since this addon's own
+`inputstream.ffmpegdirect` dependency isn't installed by default on a
+fresh Windows Kodi and isn't part of Kodi's official addon repository
+browsable through the GUI/JSON-RPC -- it has to be fetched directly
+from Kodi's own binary-addons mirror
+(`mirrors.kodi.tv/addons/<codename>/inputstream.ffmpegdirect+windows-x86_64/`)
+and side-loaded the same way this project's own addon zip is deployed.
+One real snag worth remembering if this happens again: the first
+download attempt over HTTP/2 silently corrupted the zip despite
+`curl` reporting a matching `Content-Length` and a clean `200` --
+confirmed via an MD5 mismatch against the mirror's own advertised
+`content-md5` response header, not just "unzip failed" -- forcing
+HTTP/1.1 (`curl --http1.1`) fixed it. A side-loaded addon also isn't
+enabled by default the way an installed-through-Kodi's-own-UI one is;
+needed an explicit `Addons.SetAddonEnabled` call. Once enabled, both
+plain playback and a relative backward seek succeeded cleanly, and
+`kodi.log` confirmed the same `inputstream.ffmpegdirect.stream_mode =
+timeshift` signature as the Linux run -- no platform-specific
+regressions found here either.
+
 **Server-side** (`live_timeshift_mode = 2`): a genuine, TVHeadend-like
 rolling buffer, held on the Dispatcharr server, with real pause/rewind/
 fast-forward -- via a companion Dispatcharr plugin this addon ships
