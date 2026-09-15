@@ -968,7 +968,19 @@ def _add_and_verify_timer(rpc: JsonRpcClient, channel_id: int, timerrule: bool) 
             return [t for t in timers if t.get("istimerrule") and t["timerid"] not in existing_timerids]
         return [t for t in timers if t.get("broadcastid") == broadcast_id]
 
-    attempts = ADDTIMER_CLEANUP_RETRY_ATTEMPTS if add_error else 1
+    # Confirmed live (2026-09-16, macOS/arm64, a real production account
+    # with 56+ existing timers): a successful AddTimer response is not a
+    # guarantee the very next PVR.GetTimers call already reflects it --
+    # this used to only retry the verification loop when AddTimer itself
+    # errored (on the theory Kodi might create it anyway despite a
+    # client-visible timeout), giving a single, unretried check when
+    # AddTimer reported success. Kodi's own GetTimers cache-refresh
+    # timing is a real race independent of whether AddTimer itself
+    # errored -- confirmed live: AddTimer returned success, but the new
+    # timer didn't show up in the single immediate GetTimers call this
+    # used to allow, leaving a real orphaned timer on the backend since
+    # this function's own cleanup only deletes what it actually finds.
+    attempts = ADDTIMER_CLEANUP_RETRY_ATTEMPTS
     matching = []
     for attempt in range(attempts):
         timers = rpc.call("PVR.GetTimers", {"properties": ["title", "broadcastid", "istimerrule", "starttime"]})[
