@@ -128,6 +128,21 @@ class JsonRpcClient:
             # TimeoutError, not wrapped in URLError like a connect-time
             # timeout is. Both need to fail the same way here.
             raise JsonRpcError(f"{method}: timed out waiting for a response") from exc
+        except ConnectionError as exc:
+            # Confirmed live (2026-09-15): Kodi's webserver dying mid-request
+            # (e.g. the whole process/VM crashing) surfaces as a raw
+            # ConnectionResetError, a plain OSError subclass urllib does NOT
+            # wrap in URLError -- an uncaught crash here previously took down
+            # the whole script with an unhandled traceback instead of a clean
+            # [FAIL] line. ConnectionError covers this and its siblings
+            # (BrokenPipeError, ConnectionAbortedError) the same way.
+            raise JsonRpcError(f"{method}: connection reset ({exc})") from exc
+        except json.JSONDecodeError as exc:
+            # A dying webserver can also return a truncated/empty body
+            # instead of severing the connection outright -- same "don't
+            # crash the whole script" reasoning as the ConnectionError case
+            # above.
+            raise JsonRpcError(f"{method}: invalid JSON response ({exc})") from exc
         if "error" in payload:
             raise JsonRpcError(f"{method}: {payload['error']}")
         return payload.get("result")
