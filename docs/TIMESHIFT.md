@@ -217,6 +217,25 @@ addressable from this addon's own code, and real mouse/keyboard-driven
 settings changes (the only way this dialog is actually used in practice)
 already work correctly, confirmed above.
 
+**Re-confirmed a third time (2026-09-15) on native Windows Kodi**,
+same blank-placeholder-rectangles rendering, same no-response to
+`Input.Down`, via the same `GUI.ActivateWindow`/screenshot approach --
+`kodi_screenshot.py` itself doesn't work unmodified on Windows (its
+remote-listing command assumes a bash shell; Windows' SSH default shell
+doesn't understand `ls -t`), so this pass used `Input.ExecuteAction`
+`"screenshot"` plus a manual SSH file pull instead. Three real devices,
+three different Kodi builds (Linux/Flatpak twice, native Windows once)
+now confirm the same specific `CGUIDialogAddonSettings` quirk. One new
+piece of evidence gathered this time: backing out of the dialog with
+`Input.Back` (not `Input.Select` -- confirmed safe and effective, unlike
+blindly guessing which control is focused) revealed a queued
+`"Information: The PVR backend does not allow to record this event."`
+dialog underneath -- confirming Kodi's core PVR manager *does* surface a
+real, single-button, user-facing dialog for a rejected `PVR.AddTimer`
+call (see `docs/TROUBLESHOOTING.md`'s scheduling-conflict entry), just
+deferred/queued rather than blocking the JSON-RPC response synchronously
+in this instance.
+
 **Follow-up bug in the live-apply mechanism itself, found via real
 CoreELEC testing: any settings save at all silently restarted the PVR
 client, defeating live-apply for every setting, not just the connection
